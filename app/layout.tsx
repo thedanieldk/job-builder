@@ -1,30 +1,27 @@
-import { Geist, Geist_Mono } from "next/font/google"
+// app/layout.tsx
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google"; // Or your chosen fonts
+import "./globals.css"; // Tailwind base styles
 
-import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
-import { cn } from "@/lib/utils";
+const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
+const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'})
+// Update metadata for the site
+export const metadata: Metadata = {
+  title: "Job Tracker",
+  description: "Track jobs you're applying to and their status, all in one place.",
+};
 
-const fontMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-})
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={cn("antialiased", fontMono.variable, "font-sans", geist.variable)}
-    >
-      <body>
-        <ThemeProvider>{children}</ThemeProvider>
+    <html lang="en">
+      <body
+        // Apply font variables and base background/text colors
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100`}
+      >
+        {/* children represents the content of the current page */}
+        {children}
       </body>
     </html>
-  )
+  );
 }
