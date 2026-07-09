@@ -24,6 +24,16 @@ export const jobStatusEnum = pgEnum("job_status", [
 // instead of retyping the list of statuses by hand (e.g. "Not Applied" | "Applied" | ...)
 export type JobStatus = (typeof jobStatusEnum.enumValues)[number];
 
+// which role type this listing is - lets the UI split jobs into tabs.
+// "Other" is the default for manually-added jobs you haven't categorized
+export const jobCategoryEnum = pgEnum("job_category", [
+  "Product Manager",
+  "GTM Engineering",
+  "Other",
+]);
+
+export type JobCategory = (typeof jobCategoryEnum.enumValues)[number];
+
 // defines the "jobs" table - each row is one job listing you're tracking
 export const jobs = pgTable(
   "jobs",
@@ -48,6 +58,8 @@ export const jobs = pgTable(
     applied: boolean("applied").notNull().default(false),
     // where this job currently stands in your application process
     status: jobStatusEnum("status").notNull().default("Not Applied"),
+    // "Product Manager" / "GTM Engineering" / "Other" - powers the tabs on the jobs page
+    category: jobCategoryEnum("category").notNull().default("Other"),
     // the company's website
     website: text("website"),
     // any personal notes about this job

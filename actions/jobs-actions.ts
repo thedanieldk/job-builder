@@ -2,7 +2,7 @@
 "use server";
 
 import { db } from "@/db"; // Drizzle db instance
-import { jobs, JobStatus } from "@/db/schema/jobs-schema"; // Jobs table schema
+import { jobs, JobCategory, JobStatus } from "@/db/schema/jobs-schema"; // Jobs table schema
 import { devDelay } from "@/lib/dev-delay"; // Development delay helper
 import { desc, eq } from "drizzle-orm"; // Drizzle operators
 
@@ -17,6 +17,7 @@ export type JobInput = {
   contact?: string | null;
   applied?: boolean;
   status?: JobStatus;
+  category?: JobCategory;
   website?: string | null;
   notes?: string | null;
   jobLink?: string | null;
@@ -83,12 +84,14 @@ export async function upsertJob(input: JobInput & { source: string; externalId: 
         // must match the "jobs_source_external_id_idx" unique index
         target: [jobs.source, jobs.externalId],
         set: {
+          title: input.title,
           company: input.company,
           industry: input.industry,
           salary: input.salary,
           location: input.location,
           website: input.website,
           jobLink: input.jobLink,
+          category: input.category,
           updatedAt: new Date(),
         },
       })
