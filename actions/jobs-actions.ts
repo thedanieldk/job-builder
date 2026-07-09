@@ -8,7 +8,8 @@ import { desc, eq } from "drizzle-orm"; // Drizzle operators
 
 // Shape of the fields that can be set when creating or updating a job.
 // Everything except "company" is optional/nullable to match the schema.
-type JobInput = {
+export type JobInput = {
+  title?: string | null;
   company: string;
   industry?: string | null;
   salary?: string | null;
@@ -19,6 +20,11 @@ type JobInput = {
   website?: string | null;
   notes?: string | null;
   jobLink?: string | null;
+  // which job board/API this listing came from (e.g. "jsearch"), and the
+  // unique id that source gave it - together these identify an imported
+  // listing so the poller can update it instead of creating a duplicate
+  source?: string | null;
+  externalId?: string | null;
 };
 
 /**
@@ -51,6 +57,47 @@ export async function createJob(input: JobInput) {
   } catch (error) {
     console.error("Server Action Error (createJob):", error);
     throw new Error("Failed to create job.");
+  }
+}
+
+/**
+ * UPSERT: Creates a job from an external source (e.g. JSearch), or updates
+ * it if a job with the same (source, externalId) was already imported.
+ *
+ * The poller/cron pipeline should call this instead of createJob, since
+ * re-running it on a listing you've already imported must update that row
+ * rather than throw a duplicate-key error or create a second copy.
+ *
+ * Only the fields that come FROM the source are refreshed on conflict -
+ * your own tracking fields (applied, status, notes, contact) are left
+ * untouched, so re-importing a listing never wipes out your progress on it.
+ */
+export async function upsertJob(input: JobInput & { source: string; externalId: string }) {
+  try {
+    await devDelay();
+    console.log(`Server Action: Upserting job ${input.source}/${input.externalId}...`);
+    const [job] = await db
+      .insert(jobs)
+      .values(input)
+      .onConflictDoUpdate({
+        // must match the "jobs_source_external_id_idx" unique index
+        target: [jobs.source, jobs.externalId],
+        set: {
+          company: input.company,
+          industry: input.industry,
+          salary: input.salary,
+          location: input.location,
+          website: input.website,
+          jobLink: input.jobLink,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    console.log("Server Action: Job upserted:", job);
+    return job;
+  } catch (error) {
+    console.error("Server Action Error (upsertJob):", error);
+    throw new Error("Failed to upsert job.");
   }
 }
 

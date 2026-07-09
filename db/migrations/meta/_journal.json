@@ -22,6 +22,20 @@
       "when": 1783546920590,
       "tag": "0002_superb_speed_demon",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783613960643,
+      "tag": "0003_odd_wolfpack",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783614692847,
+      "tag": "0004_spicy_harry_osborn",
+      "breakpoints": true
     }
   ]
 }

@@ -19,6 +19,7 @@ import { useState, SubmitEvent } from "react";
 // Shape of a single row in the table. Mirrors the "jobs" drizzle schema.
 export interface Job {
   id: number;
+  title: string | null;
   company: string;
   industry: string | null;
   salary: string | null;
@@ -55,6 +56,7 @@ const SELECT_CLASSNAME =
 // The editable fields for the create/edit form. Text fields use "" instead of null
 // so they work as controlled inputs; we convert "" back to null before saving.
 const EMPTY_FORM_DATA = {
+  title: "",
   company: "",
   industry: "",
   salary: "",
@@ -121,6 +123,7 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
   const handleEditClick = (jobToEdit: Job) => {
     setEditingId(jobToEdit.id); // Store the ID of the job being edited
     setFormData({
+      title: jobToEdit.title ?? "",
       company: jobToEdit.company,
       industry: jobToEdit.industry ?? "",
       salary: jobToEdit.salary ?? "",
@@ -147,6 +150,7 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
   // Turn the form's "" placeholders back into null for optional fields before saving,
   // so empty cells render as "—" instead of a blank string in the table.
   const buildPayload = () => ({
+    title: formData.title.trim() === "" ? null : formData.title,
     company: formData.company,
     industry: formData.industry.trim() === "" ? null : formData.industry,
     salary: formData.salary.trim() === "" ? null : formData.salary,
@@ -254,6 +258,10 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
               </DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-1">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="title" className="text-right">Title</Label>
+                <Input id="title" name="title" value={formData.title} onChange={handleInputChange} className="col-span-3" disabled={isSubmitting} />
+              </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="company" className="text-right">Company</Label>
                 <Input id="company" name="company" value={formData.company} onChange={handleInputChange} required className="col-span-3" disabled={isSubmitting} />
@@ -372,6 +380,7 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
             <table className="w-full text-sm text-left border-collapse">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700/50 bg-gray-50 dark:bg-gray-900/40">
+                  <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap">Title</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap">Company</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap">Industry</th>
                   <th className="px-4 py-3 font-semibold text-gray-700 dark:text-gray-200 whitespace-nowrap">Salary</th>
@@ -394,6 +403,9 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
                     transition={{ duration: 0.3, delay: index * 0.03 }}
                     className="border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/20"
                   >
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white whitespace-nowrap">
+                      {job.title ?? <span className="text-gray-400 dark:text-gray-600">—</span>}
+                    </td>
                     <td className="px-4 py-3 font-medium text-gray-900 dark:text-white whitespace-nowrap">{job.company}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">
                       {job.industry ?? <span className="text-gray-400 dark:text-gray-600">—</span>}
