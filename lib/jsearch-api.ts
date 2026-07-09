@@ -117,14 +117,21 @@ export function mapJsearchJobToInput(
 // there's no search query that means "other."
 export type PollableCategory = Exclude<JobCategory, "Other">;
 
-// Which JSearch queries to run for each pollable category. Product Manager
-// is one query; GTM Engineering needs two since neither phrase alone covers
-// how the role gets listed across job boards.
+// Which JSearch queries to run for each pollable category, scoped to New York
+// or Remote (confirmed by testing that JSearch reads location straight out of
+// the free-text query, e.g. "... in New York, NY" or "Remote ... jobs").
+// GTM Engineering needs two search terms since neither phrase alone covers
+// how the role gets listed across job boards - each term gets both locations.
 const QUERY_SETS: Record<PollableCategory, { query: string; category: JobCategory }[]> = {
-  "Product Manager": [{ query: "Product Manager", category: "Product Manager" }],
+  "Product Manager": [
+    { query: "Product Manager jobs in New York, NY", category: "Product Manager" },
+    { query: "Remote Product Manager jobs", category: "Product Manager" },
+  ],
   "GTM Engineering": [
-    { query: "GTM Engineer", category: "GTM Engineering" },
-    { query: "Go-to-Market Engineer", category: "GTM Engineering" },
+    { query: "GTM Engineer jobs in New York, NY", category: "GTM Engineering" },
+    { query: "Remote GTM Engineer jobs", category: "GTM Engineering" },
+    { query: "Go-to-Market Engineer jobs in New York, NY", category: "GTM Engineering" },
+    { query: "Remote Go-to-Market Engineer jobs", category: "GTM Engineering" },
   ],
 };
 

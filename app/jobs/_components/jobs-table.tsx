@@ -369,6 +369,12 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
                   onClick={() => {
                     setEditingId(null) // Ensure create mode
                     resetAndCloseForm()
+                    // Default the new job's category to whichever tab is
+                    // currently active, so it shows up immediately instead
+                    // of silently landing in a different (filtered-out) tab
+                    if (activeTab !== "All") {
+                      setFormData((prev) => ({ ...prev, category: activeTab }))
+                    }
                     setIsFormOpen(true)
                   }}
                   className="gap-2"

@@ -144,15 +144,17 @@ export async function deleteJob(id: number) {
     const [deletedJob] = await db.delete(jobs).where(eq(jobs.id, id)).returning();
 
     if (!deletedJob) {
-      throw new Error("Job not found for deletion.");
+      // Already gone (e.g. deleted from another tab, or the click landed on
+      // a stale row the UI hadn't refreshed yet) - the end goal, "this job
+      // doesn't exist," is already true, so treat this as a success rather
+      // than an error instead of showing a scary failure for a no-op.
+      console.log(`Server Action: Job ${id} was already deleted.`);
+      return null;
     }
     console.log("Server Action: Job deleted:", deletedJob);
     return deletedJob;
   } catch (error) {
     console.error("Server Action Error (deleteJob):", error);
-    if (error instanceof Error && error.message.includes("Job not found")) {
-      throw error;
-    }
     throw new Error("Failed to delete job.");
   }
 }
