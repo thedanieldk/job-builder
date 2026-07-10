@@ -4,6 +4,7 @@
 
 import { upsertJob, type JobInput } from "@/actions/jobs-actions";
 import type { JobCategory } from "@/db/schema/jobs-schema";
+import { isRelevantTitle, isRelevantLocation } from "@/lib/job-relevance";
 
 // JSearch returns 40+ fields per job; this is just the subset we actually use.
 export interface JsearchJob {
@@ -147,6 +148,10 @@ export interface QueryResult {
   found: number;
   upserted: number;
   failed: number;
+  // how many results JSearch returned that got skipped because the title
+  // didn't actually match the category searched for (e.g. a "GTM Engineer"
+  // search returning a "Sr. Nodejs/TypeScript Engineer" listing)
+  filtered: number;
 }
 
 /**
@@ -163,8 +168,21 @@ export async function runJobPoll(
     const jsearchJobs = await searchJobs(query);
     let upserted = 0;
     let failed = 0;
+    let filtered = 0;
 
     for (const job of jsearchJobs) {
+      // Skip results that don't actually match what we searched for -
+      // JSearch matches loosely, so a "GTM Engineer" query can still return
+      // unrelated titles like "Sr. Nodejs/TypeScript Engineer", and a "New
+      // York"/"Remote" query can still return jobs from anywhere in the US.
+      if (
+        !isRelevantTitle(job.job_title, category) ||
+        !isRelevantLocation(job.job_location, job.job_is_remote)
+      ) {
+        filtered++;
+        continue;
+      }
+
       try {
         await upsertJob(mapJsearchJobToInput(job, category));
         upserted++;
@@ -175,7 +193,7 @@ export async function runJobPoll(
       }
     }
 
-    results.push({ query, found: jsearchJobs.length, upserted, failed });
+    results.push({ query, found: jsearchJobs.length, upserted, failed, filtered });
   }
 
   return results;

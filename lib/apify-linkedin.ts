@@ -5,6 +5,7 @@
 import { upsertJob, type JobInput } from "@/actions/jobs-actions";
 import type { JobCategory } from "@/db/schema/jobs-schema";
 import type { PollableCategory, QueryResult } from "@/lib/jsearch-api";
+import { isRelevantTitle, isRelevantLocation } from "@/lib/job-relevance";
 
 // The public "linkedin-jobs-scraper" actor by curious_coder:
 // https://console.apify.com/actors/hKByXkMQaC5Qt9UMN/input
@@ -137,8 +138,21 @@ export async function runApifyLinkedInPoll(
     const jobs = await scrapeLinkedInJobs(url);
     let upserted = 0;
     let failed = 0;
+    let filtered = 0;
 
     for (const job of jobs) {
+      // Same loose-matching problem as JSearch - LinkedIn's own search can
+      // still surface unrelated titles for a "GTM Engineer" keyword search,
+      // and its "Remote" filter (f_WT=2) doesn't reliably apply through the
+      // scraper - it still returns plain on-site jobs from any US city.
+      if (
+        !isRelevantTitle(job.title, category) ||
+        !isRelevantLocation(job.location)
+      ) {
+        filtered++;
+        continue;
+      }
+
       try {
         await upsertJob(mapApifyJobToInput(job, category));
         upserted++;
@@ -148,7 +162,7 @@ export async function runApifyLinkedInPoll(
       }
     }
 
-    results.push({ query: url, found: jobs.length, upserted, failed });
+    results.push({ query: url, found: jobs.length, upserted, failed, filtered });
   }
 
   return results;
