@@ -25,7 +25,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import type { JobCategory, JobStatus } from "@/db/schema/jobs-schema"
 import type { PollableCategory } from "@/lib/jsearch-api"
-import { motion } from "framer-motion"
+import { AnimatePresence, motion } from "framer-motion"
 import {
   Check,
   Edit2,
@@ -35,7 +35,7 @@ import {
   Trash2,
   X,
 } from "lucide-react"
-import { useState, SubmitEvent } from "react"
+import { useEffect, useState, SubmitEvent } from "react"
 
 // Shape of a single row in the table. Mirrors the "jobs" drizzle schema.
 export interface Job {
@@ -177,9 +177,21 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
   const [editingId, setEditingId] = useState<number | null>(null) // null when creating, number (ID) when editing
 
   // --- State for Deletion ---
-  const [deletingId, setDeletingId] = useState<number | null>(null) // ID of job to delete
-  const [isDeleting, setIsDeleting] = useState(false) // Deletion loading state
-  const [deleteError, setDeleteError] = useState<string | null>(null) // Deletion error state
+  const [deletingId, setDeletingId] = useState<number | null>(null) // ID of job to delete (drives the confirm dialog)
+  // If a background delete fails, we show a small toast-style message here
+  // (the confirm dialog is already closed by then, so we can't show the
+  // error inside it anymore).
+  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(
+    null
+  )
+
+  // Auto-dismiss the delete-error toast after a few seconds so it doesn't
+  // stick around forever.
+  useEffect(() => {
+    if (!deleteErrorMessage) return
+    const timer = setTimeout(() => setDeleteErrorMessage(null), 5000)
+    return () => clearTimeout(timer)
+  }, [deleteErrorMessage])
 
   // --- Event Handlers ---
   const handleInputChange = (
@@ -275,37 +287,45 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
   // --- Deletion Handlers ---
   const handleOpenDeleteDialog = (id: number) => {
     setDeletingId(id) // Set the ID to trigger the dialog opening
-    setDeleteError(null) // Clear any previous delete errors
   }
 
   const handleCloseDeleteDialog = () => {
-    // Prevent closing if deletion is in progress
-    if (!isDeleting) {
-      setDeletingId(null)
-      setDeleteError(null)
-    }
+    setDeletingId(null)
   }
 
-  const handleDeleteConfirm = async () => {
+  // Deleting a job is "optimistic": we remove the row and close the dialog
+  // immediately, without waiting for the server to respond. This makes the
+  // UI feel instant even though the actual delete (and our artificial
+  // devDelay) is still happening in the background. If it turns out the
+  // delete failed, we quietly put the row back and show a toast explaining
+  // why - but the happy path never makes the user wait.
+  const handleDeleteConfirm = () => {
     if (deletingId === null) return // Exit if no ID is set
 
-    setIsDeleting(true) // Set loading state
-    setDeleteError(null)
+    const idToDelete = deletingId
+    // Remember where the job was, so we can put it back in the same spot
+    // if the server call ends up failing.
+    const indexToRestore = jobs.findIndex((j) => j.id === idToDelete)
+    const jobToRestore = jobs[indexToRestore]
 
-    try {
-      await deleteJob(deletingId)
-      // Update local state by removing the deleted job
-      setJobs((prevJobs) => prevJobs.filter((j) => j.id !== deletingId))
-      setDeletingId(null)
-      setIsDeleting(false)
-    } catch (err) {
+    // --- Optimistic update: remove the row and close the dialog now ---
+    setJobs((prevJobs) => prevJobs.filter((j) => j.id !== idToDelete))
+    setDeletingId(null)
+
+    // --- Actually delete on the server, in the background ---
+    deleteJob(idToDelete).catch((err) => {
       console.error("Delete Job Error:", err)
-      setDeleteError(
-        err instanceof Error ? err.message : "Failed to delete job."
+      // Put the job back where it was, since the delete didn't actually happen
+      setJobs((prevJobs) => {
+        if (prevJobs.some((j) => j.id === idToDelete)) return prevJobs
+        const restored = [...prevJobs]
+        restored.splice(indexToRestore, 0, jobToRestore)
+        return restored
+      })
+      setDeleteErrorMessage(
+        `Failed to delete "${jobToRestore?.company ?? "job"}". It has been restored.`
       )
-      setIsDeleting(false) // Reset loading state on error
-      // Keep dialog open to show error by not setting deletingId to null here
-    }
+    })
   }
 
   return (
@@ -609,7 +629,6 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
         onOpenChange={(open) => {
           if (!open) handleCloseDeleteDialog()
         }}
-        disablePointerDismissal={isDeleting}
       >
         <DialogContent>
           <DialogHeader>
@@ -623,29 +642,32 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
               </strong>
             </DialogDescription>
           </DialogHeader>
-          {deleteError && (
-            <p className="py-2 text-center text-sm text-red-600 dark:text-red-400">
-              {deleteError}
-            </p>
-          )}
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={handleCloseDeleteDialog}
-              disabled={isDeleting}
-            >
+            <Button variant="outline" onClick={handleCloseDeleteDialog}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteConfirm}
-              disabled={isDeleting}
-            >
-              {isDeleting ? "Deleting..." : "Yes, delete"}
+            <Button variant="destructive" onClick={handleDeleteConfirm}>
+              Yes, delete
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* --- Delete-failed toast --- */}
+      {/* Only ever shows up if the background delete request fails after we've
+          already optimistically removed the row - see handleDeleteConfirm. */}
+      <AnimatePresence>
+        {deleteErrorMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="fixed right-4 bottom-4 z-50 max-w-sm rounded-lg border border-red-200 bg-white px-4 py-3 text-sm text-red-700 shadow-lg dark:border-red-900 dark:bg-gray-800 dark:text-red-400"
+          >
+            {deleteErrorMessage}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Empty state, or the actual table (filtered to the active category tab) */}
       {filteredJobs.length === 0 ? (
@@ -705,113 +727,116 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
                 </tr>
               </thead>
               <tbody>
-                {filteredJobs.map((job, index) => (
-                  <motion.tr
-                    key={job.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: index * 0.03 }}
-                    className="border-b border-gray-100 last:border-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-700/20"
-                  >
-                    <td className="px-4 py-3 font-medium whitespace-nowrap text-gray-900 dark:text-white">
-                      {job.title ?? (
-                        <span className="text-gray-400 dark:text-gray-600">
-                          —
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-medium whitespace-nowrap text-gray-900 dark:text-white">
-                      {job.company}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
-                      {job.industry ?? (
-                        <span className="text-gray-400 dark:text-gray-600">
-                          —
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
-                      {job.salary ?? (
-                        <span className="text-gray-400 dark:text-gray-600">
-                          —
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
-                      {job.location ?? (
-                        <span className="text-gray-400 dark:text-gray-600">
-                          —
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
-                      {job.contact ?? (
-                        <span className="text-gray-400 dark:text-gray-600">
-                          —
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {job.applied ? (
-                        <Check className="inline h-4 w-4 text-green-500" />
-                      ) : (
-                        <X className="inline h-4 w-4 text-gray-300 dark:text-gray-600" />
-                      )}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span
-                        className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[job.status]}`}
-                      >
-                        {job.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <span
-                        className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${CATEGORY_STYLES[job.category]}`}
-                      >
-                        {job.category}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <LinkCell href={job.website} label="Site" />
-                    </td>
-                    <td
-                      className="max-w-[220px] truncate px-4 py-3 text-gray-600 dark:text-gray-300"
-                      title={job.notes ?? undefined}
+                <AnimatePresence initial={false}>
+                  {filteredJobs.map((job, index) => (
+                    <motion.tr
+                      key={job.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="border-b border-gray-100 last:border-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-700/20"
                     >
-                      {job.notes ?? (
-                        <span className="text-gray-400 dark:text-gray-600">
-                          —
+                      <td className="px-4 py-3 font-medium whitespace-nowrap text-gray-900 dark:text-white">
+                        {job.title ?? (
+                          <span className="text-gray-400 dark:text-gray-600">
+                            —
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 font-medium whitespace-nowrap text-gray-900 dark:text-white">
+                        {job.company}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
+                        {job.industry ?? (
+                          <span className="text-gray-400 dark:text-gray-600">
+                            —
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
+                        {job.salary ?? (
+                          <span className="text-gray-400 dark:text-gray-600">
+                            —
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
+                        {job.location ?? (
+                          <span className="text-gray-400 dark:text-gray-600">
+                            —
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
+                        {job.contact ?? (
+                          <span className="text-gray-400 dark:text-gray-600">
+                            —
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {job.applied ? (
+                          <Check className="inline h-4 w-4 text-green-500" />
+                        ) : (
+                          <X className="inline h-4 w-4 text-gray-300 dark:text-gray-600" />
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span
+                          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[job.status]}`}
+                        >
+                          {job.status}
                         </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <LinkCell href={job.jobLink} label="Posting" />
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          title="Edit"
-                          onClick={() => handleEditClick(job)}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span
+                          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${CATEGORY_STYLES[job.category]}`}
                         >
-                          <Edit2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-500"
-                          title="Delete"
-                          onClick={() => handleOpenDeleteDialog(job.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </motion.tr>
-                ))}
+                          {job.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <LinkCell href={job.website} label="Site" />
+                      </td>
+                      <td
+                        className="max-w-[220px] truncate px-4 py-3 text-gray-600 dark:text-gray-300"
+                        title={job.notes ?? undefined}
+                      >
+                        {job.notes ?? (
+                          <span className="text-gray-400 dark:text-gray-600">
+                            —
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <LinkCell href={job.jobLink} label="Posting" />
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="Edit"
+                            onClick={() => handleEditClick(job)}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-500"
+                            title="Delete"
+                            onClick={() => handleOpenDeleteDialog(job.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </motion.tr>
+                  ))}
+                </AnimatePresence>
               </tbody>
             </table>
           </div>
