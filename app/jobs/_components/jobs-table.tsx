@@ -129,11 +129,10 @@ const LinkCell = ({ href, label }: { href: string | null; label: string }) => {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-blue-600 hover:underline dark:text-blue-400"
+      className="inline-flex items-center text-blue-600 hover:underline dark:text-blue-400"
       title={label}
     >
       <ExternalLink className="h-3.5 w-3.5" />
-      <span className="hidden lg:inline">{label}</span>
     </a>
   )
 }
@@ -685,50 +684,50 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
             <table className="w-full border-collapse text-left text-sm">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700/50 dark:bg-gray-900/40">
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Title
                   </th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Company
                   </th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Industry
                   </th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Salary
                   </th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Location
                   </th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Contact
                   </th>
-                  <th className="px-4 py-3 text-center font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 text-center font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Applied?
                   </th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Status
                   </th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Category
                   </th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Website
                   </th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Notes
                   </th>
-                  <th className="px-4 py-3 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Job Link
                   </th>
-                  <th className="px-4 py-3 text-right font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                  <th className="px-2.5 py-2 text-right font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Actions
                   </th>
                 </tr>
               </thead>
               <tbody>
                 <AnimatePresence initial={false}>
-                  {filteredJobs.map((job, index) => (
+                  {filteredJobs.map((job) => (
                     <motion.tr
                       key={job.id}
                       initial={{ opacity: 0, y: 10 }}
@@ -737,70 +736,88 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
                       transition={{ duration: 0.2 }}
                       className="border-b border-gray-100 last:border-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-700/20"
                     >
-                      <td className="px-4 py-3 font-medium whitespace-nowrap text-gray-900 dark:text-white">
+                      <td
+                        className="max-w-[160px] truncate px-2.5 py-2.5 font-medium text-gray-900 dark:text-white"
+                        title={job.title ?? undefined}
+                      >
                         {job.title ?? (
                           <span className="text-gray-400 dark:text-gray-600">
                             —
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 font-medium whitespace-nowrap text-gray-900 dark:text-white">
+                      <td
+                        className="max-w-[140px] truncate px-2.5 py-2.5 font-medium text-gray-900 dark:text-white"
+                        title={job.company}
+                      >
                         {job.company}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
+                      <td
+                        className="max-w-[120px] truncate px-2.5 py-2.5 text-gray-600 dark:text-gray-300"
+                        title={job.industry ?? undefined}
+                      >
                         {job.industry ?? (
                           <span className="text-gray-400 dark:text-gray-600">
                             —
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
+                      <td
+                        className="max-w-[110px] truncate px-2.5 py-2.5 text-gray-600 dark:text-gray-300"
+                        title={job.salary ?? undefined}
+                      >
                         {job.salary ?? (
                           <span className="text-gray-400 dark:text-gray-600">
                             —
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
+                      <td
+                        className="max-w-[120px] truncate px-2.5 py-2.5 text-gray-600 dark:text-gray-300"
+                        title={job.location ?? undefined}
+                      >
                         {job.location ?? (
                           <span className="text-gray-400 dark:text-gray-600">
                             —
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
+                      <td
+                        className="max-w-[140px] truncate px-2.5 py-2.5 text-gray-600 dark:text-gray-300"
+                        title={job.contact ?? undefined}
+                      >
                         {job.contact ?? (
                           <span className="text-gray-400 dark:text-gray-600">
                             —
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-center">
+                      <td className="px-2.5 py-2.5 text-center">
                         {job.applied ? (
                           <Check className="inline h-4 w-4 text-green-500" />
                         ) : (
                           <X className="inline h-4 w-4 text-gray-300 dark:text-gray-600" />
                         )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-2.5 py-2.5 whitespace-nowrap">
                         <span
-                          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[job.status]}`}
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[job.status]}`}
                         >
                           {job.status}
                         </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-2.5 py-2.5 whitespace-nowrap">
                         <span
-                          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${CATEGORY_STYLES[job.category]}`}
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_STYLES[job.category]}`}
                         >
                           {job.category}
                         </span>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-2.5 py-2.5">
                         <LinkCell href={job.website} label="Site" />
                       </td>
                       <td
-                        className="max-w-[220px] truncate px-4 py-3 text-gray-600 dark:text-gray-300"
+                        className="max-w-[220px] truncate px-2.5 py-2.5 text-gray-600 dark:text-gray-300"
                         title={job.notes ?? undefined}
                       >
                         {job.notes ?? (
@@ -809,10 +826,10 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-2.5 py-2.5">
                         <LinkCell href={job.jobLink} label="Posting" />
                       </td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <td className="px-2.5 py-2.5 text-right whitespace-nowrap">
                         <div className="flex justify-end gap-1">
                           <Button
                             variant="ghost"
