@@ -1,6 +1,8 @@
 // app/api/cron/poll-jobs/route.ts
 // Cron endpoint: pulls Product Manager listings from JSearch + Apify
-// LinkedIn and upserts them into the jobs table. Triggered daily by the
+// LinkedIn and upserts them into the pending_jobs staging table for review
+// (see the "Pending Review" modal on the jobs page) - nothing lands in the
+// master jobs table until you approve it there. Triggered daily by the
 // "crons" entry in vercel.json. GTM Engineering isn't polled automatically -
 // that's a manual "Sync now" action (see actions/poll-actions.ts) so it can
 // be triggered on demand instead of running on a fixed schedule.

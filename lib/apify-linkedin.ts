@@ -2,27 +2,30 @@
 // Client for the Apify "linkedin-jobs-scraper" actor - scrapes LinkedIn's
 // public jobs search directly, as a second source alongside JSearch.
 
-import { upsertJob, type JobInput } from "@/actions/jobs-actions";
-import type { JobCategory } from "@/db/schema/jobs-schema";
-import type { PollableCategory, QueryResult } from "@/lib/jsearch-api";
-import { isRelevantTitle, isRelevantLocation } from "@/lib/job-relevance";
+import {
+  upsertPendingJob,
+  type PendingJobInput,
+} from "@/actions/pending-jobs-actions"
+import type { JobCategory } from "@/db/schema/jobs-schema"
+import type { PollableCategory, QueryResult } from "@/lib/jsearch-api"
+import { isRelevantTitle, isRelevantLocation } from "@/lib/job-relevance"
 
 // The public "linkedin-jobs-scraper" actor by curious_coder:
 // https://console.apify.com/actors/hKByXkMQaC5Qt9UMN/input
-const LINKEDIN_JOBS_SCRAPER_ACTOR_ID = "hKByXkMQaC5Qt9UMN";
-const APIFY_RUN_URL = `https://api.apify.com/v2/acts/${LINKEDIN_JOBS_SCRAPER_ACTOR_ID}/run-sync-get-dataset-items`;
+const LINKEDIN_JOBS_SCRAPER_ACTOR_ID = "hKByXkMQaC5Qt9UMN"
+const APIFY_RUN_URL = `https://api.apify.com/v2/acts/${LINKEDIN_JOBS_SCRAPER_ACTOR_ID}/run-sync-get-dataset-items`
 
 // The actor returns more fields than this (company details, benefits, etc.);
 // this is just the subset we actually use.
 export interface ApifyLinkedInJob {
-  id: string;
-  title: string;
-  companyName: string;
-  companyLinkedinUrl: string | null;
-  location: string | null;
-  link: string;
-  salary: string | null;
-  industries: string | null;
+  id: string
+  title: string
+  companyName: string
+  companyLinkedinUrl: string | null
+  location: string | null
+  link: string
+  salary: string | null
+  industries: string | null
 }
 
 /**
@@ -33,10 +36,13 @@ export interface ApifyLinkedInJob {
  * or non-2xx response, so one bad search doesn't abort a poll run that's
  * looping over several.
  */
-export async function scrapeLinkedInJobs(url: string, count = 10): Promise<ApifyLinkedInJob[]> {
-  const apiKey = process.env.APIFY_KEY;
+export async function scrapeLinkedInJobs(
+  url: string,
+  count = 10
+): Promise<ApifyLinkedInJob[]> {
+  const apiKey = process.env.APIFY_KEY
   if (!apiKey) {
-    throw new Error("APIFY_KEY is not set");
+    throw new Error("APIFY_KEY is not set")
   }
 
   try {
@@ -54,29 +60,31 @@ export async function scrapeLinkedInJobs(url: string, count = 10): Promise<Apify
       // batch in testing) - a generous timeout so a stuck run doesn't stall
       // (or blow the timeout on) the whole poll run
       signal: AbortSignal.timeout(60_000),
-    });
+    })
 
     if (!response.ok) {
-      console.error(`Apify LinkedIn search "${url}" failed with status ${response.status}`);
-      return [];
+      console.error(
+        `Apify LinkedIn search "${url}" failed with status ${response.status}`
+      )
+      return []
     }
 
-    return response.json();
+    return response.json()
   } catch (error) {
-    console.error(`Apify LinkedIn search "${url}" threw:`, error);
-    return [];
+    console.error(`Apify LinkedIn search "${url}" threw:`, error)
+    return []
   }
 }
 
 /**
- * Maps one Apify LinkedIn listing to the shape upsertJob() expects.
+ * Maps one Apify LinkedIn listing to the shape upsertPendingJob() expects.
  * Same "source" + "externalId" dedup pattern as mapJsearchJobToInput -
- * upsertJob updates the row in place if this listing was already imported.
+ * upsertPendingJob updates the row in place if this listing was already staged.
  */
 export function mapApifyJobToInput(
   job: ApifyLinkedInJob,
-  category: JobCategory,
-): JobInput & { source: string; externalId: string } {
+  category: JobCategory
+): PendingJobInput {
   return {
     title: job.title,
     company: job.companyName,
@@ -91,37 +99,58 @@ export function mapApifyJobToInput(
     source: "apify-linkedin",
     externalId: job.id,
     category,
-  };
+  }
 }
 
 // LinkedIn search URL params, confirmed by testing: "location=" scopes to a
 // city/state, and "f_WT=2" is LinkedIn's own "Remote" work-type filter.
-const NY_LOCATION = "location=New%20York%2C%20United%20States";
-const REMOTE_LOCATION = "location=United%20States&f_WT=2";
+const NY_LOCATION = "location=New%20York%2C%20United%20States"
+const REMOTE_LOCATION = "location=United%20States&f_WT=2"
 
 function linkedInSearchUrl(keywords: string, locationParams: string): string {
-  return `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(keywords)}&${locationParams}`;
+  return `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(keywords)}&${locationParams}`
 }
 
 // Same search terms as JSearch's QUERY_SETS, each scoped to NY + Remote.
-const SEARCH_URL_SETS: Record<PollableCategory, { url: string; category: JobCategory }[]> = {
+const SEARCH_URL_SETS: Record<
+  PollableCategory,
+  { url: string; category: JobCategory }[]
+> = {
   "Product Manager": [
-    { url: linkedInSearchUrl("Product Manager", NY_LOCATION), category: "Product Manager" },
-    { url: linkedInSearchUrl("Product Manager", REMOTE_LOCATION), category: "Product Manager" },
+    {
+      url: linkedInSearchUrl("Product Manager", NY_LOCATION),
+      category: "Product Manager",
+    },
+    {
+      url: linkedInSearchUrl("Product Manager", REMOTE_LOCATION),
+      category: "Product Manager",
+    },
   ],
   "GTM Engineering": [
-    { url: linkedInSearchUrl("GTM Engineer", NY_LOCATION), category: "GTM Engineering" },
-    { url: linkedInSearchUrl("GTM Engineer", REMOTE_LOCATION), category: "GTM Engineering" },
-    { url: linkedInSearchUrl("Go-to-Market Engineer", NY_LOCATION), category: "GTM Engineering" },
-    { url: linkedInSearchUrl("Go-to-Market Engineer", REMOTE_LOCATION), category: "GTM Engineering" },
+    {
+      url: linkedInSearchUrl("GTM Engineer", NY_LOCATION),
+      category: "GTM Engineering",
+    },
+    {
+      url: linkedInSearchUrl("GTM Engineer", REMOTE_LOCATION),
+      category: "GTM Engineering",
+    },
+    {
+      url: linkedInSearchUrl("Go-to-Market Engineer", NY_LOCATION),
+      category: "GTM Engineering",
+    },
+    {
+      url: linkedInSearchUrl("Go-to-Market Engineer", REMOTE_LOCATION),
+      category: "GTM Engineering",
+    },
   ],
-};
+}
 
 // Flattens the requested categories into the flat search list runApifyLinkedInPoll expects.
 export function getSearchUrlsForCategories(
-  categories: PollableCategory[],
+  categories: PollableCategory[]
 ): { url: string; category: JobCategory }[] {
-  return categories.flatMap((category) => SEARCH_URL_SETS[category]);
+  return categories.flatMap((category) => SEARCH_URL_SETS[category])
 }
 
 /**
@@ -130,15 +159,15 @@ export function getSearchUrlsForCategories(
  * combine results from both sources into one summary.
  */
 export async function runApifyLinkedInPoll(
-  searches: { url: string; category: JobCategory }[],
+  searches: { url: string; category: JobCategory }[]
 ): Promise<QueryResult[]> {
-  const results: QueryResult[] = [];
+  const results: QueryResult[] = []
 
   for (const { url, category } of searches) {
-    const jobs = await scrapeLinkedInJobs(url);
-    let upserted = 0;
-    let failed = 0;
-    let filtered = 0;
+    const jobs = await scrapeLinkedInJobs(url)
+    let upserted = 0
+    let failed = 0
+    let filtered = 0
 
     for (const job of jobs) {
       // Same loose-matching problem as JSearch - LinkedIn's own search can
@@ -149,21 +178,21 @@ export async function runApifyLinkedInPoll(
         !isRelevantTitle(job.title, category) ||
         !isRelevantLocation(job.location)
       ) {
-        filtered++;
-        continue;
+        filtered++
+        continue
       }
 
       try {
-        await upsertJob(mapApifyJobToInput(job, category));
-        upserted++;
+        await upsertPendingJob(mapApifyJobToInput(job, category))
+        upserted++
       } catch (error) {
-        console.error(`Failed to upsert Apify LinkedIn job ${job.id}:`, error);
-        failed++;
+        console.error(`Failed to upsert Apify LinkedIn job ${job.id}:`, error)
+        failed++
       }
     }
 
-    results.push({ query: url, found: jobs.length, upserted, failed, filtered });
+    results.push({ query: url, found: jobs.length, upserted, failed, filtered })
   }
 
-  return results;
+  return results
 }

@@ -1,12 +1,13 @@
 // app/jobs/page.tsx
-import { getJobs } from "@/actions/jobs-actions"; // Import server action
-import { Header } from "@/components/header"; // Shared header
-import { Suspense } from "react"; // Import Suspense
-import { JobsTable } from "./_components/jobs-table"; // Table component to display jobs
-import { JobsTableSkeleton } from "./_components/jobs-table-skeleton"; // Loading state
+import { getJobs } from "@/actions/jobs-actions" // Import server action
+import { getPendingJobs } from "@/actions/pending-jobs-actions" // Pending-review queue
+import { Header } from "@/components/header" // Shared header
+import { Suspense } from "react" // Import Suspense
+import { JobsTable } from "./_components/jobs-table" // Table component to display jobs
+import { JobsTableSkeleton } from "./_components/jobs-table-skeleton" // Loading state
 
 // Opt out of caching
-export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic"
 
 // Keep as default export, but we won't fetch directly here for Suspense
 export default async function JobsPage() {
@@ -14,11 +15,11 @@ export default async function JobsPage() {
     <>
       <Header /> {/* Render the consistent header */}
       {/* Main content container */}
-      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 pt-24 pb-16">
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100 pt-24 pb-16 dark:from-gray-900 dark:to-gray-800">
         {/* Add sufficient top padding (pt-24) below the fixed header */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {/* Page title */}
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">
+          <h1 className="mb-8 text-3xl font-bold text-gray-900 dark:text-white">
             Job Tracker
           </h1>
 
@@ -30,7 +31,7 @@ export default async function JobsPage() {
         </div>
       </div>
     </>
-  );
+  )
 }
 
 /**
@@ -38,9 +39,11 @@ export default async function JobsPage() {
  * React Suspense will catch the promise awaited here and show the fallback.
  */
 async function JobsLoader() {
-  // Fetch the jobs data using the Server Action
-  const jobs = await getJobs();
+  // Fetch both the master jobs list and the pending-review queue up front,
+  // in parallel, so the Client Component gets everything it needs in one
+  // shot instead of fetching pending jobs itself after mount.
+  const [jobs, pendingJobs] = await Promise.all([getJobs(), getPendingJobs()])
 
   // Once data is ready, render the Client Component with the data
-  return <JobsTable initialJobs={jobs} />;
+  return <JobsTable initialJobs={jobs} initialPendingJobs={pendingJobs} />
 }

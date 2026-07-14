@@ -8,6 +8,10 @@ import {
   getJobs,
   updateJob,
 } from "@/actions/jobs-actions"
+import {
+  approvePendingJob,
+  dismissPendingJob,
+} from "@/actions/pending-jobs-actions"
 import { pollJobsNow } from "@/actions/poll-actions"
 import { Button } from "@/components/ui/button"
 import {
@@ -30,6 +34,7 @@ import {
   Check,
   Edit2,
   ExternalLink,
+  Inbox,
   Plus,
   RefreshCw,
   Trash2,
@@ -54,8 +59,27 @@ export interface Job {
   jobLink: string | null
 }
 
+// Shape of a single row in the pending-review queue. Mirrors the
+// "pending_jobs" drizzle schema - notice there's no applied/status/contact/
+// notes here, since those only make sense once a job is approved into the
+// master table.
+export interface PendingJob {
+  id: number
+  title: string | null
+  company: string
+  industry: string | null
+  salary: string | null
+  location: string | null
+  category: JobCategory
+  website: string | null
+  jobLink: string | null
+  source: string
+  externalId: string
+}
+
 interface JobsTableProps {
   initialJobs: Job[] // Data passed down from the parent page (fetched via getJobs)
+  initialPendingJobs: PendingJob[] // Data passed down from the parent page (fetched via getPendingJobs)
 }
 
 // All possible status options, used to populate the <select> in the form
@@ -137,7 +161,10 @@ const LinkCell = ({ href, label }: { href: string | null; label: string }) => {
   )
 }
 
-export const JobsTable = ({ initialJobs }: JobsTableProps) => {
+export const JobsTable = ({
+  initialJobs,
+  initialPendingJobs,
+}: JobsTableProps) => {
   // Initialize component state with the data passed down from the server
   const [jobs, setJobs] = useState<Job[]>(initialJobs)
 
@@ -177,20 +204,24 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
 
   // --- State for Deletion ---
   const [deletingId, setDeletingId] = useState<number | null>(null) // ID of job to delete (drives the confirm dialog)
-  // If a background delete fails, we show a small toast-style message here
-  // (the confirm dialog is already closed by then, so we can't show the
-  // error inside it anymore).
-  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(
-    null
-  )
 
-  // Auto-dismiss the delete-error toast after a few seconds so it doesn't
-  // stick around forever.
+  // Shared toast for any background action (delete/approve/dismiss) that
+  // fails *after* we've already optimistically updated the UI - the dialog
+  // or pending row is already gone by the time the error comes back, so
+  // this is the only place left to show it.
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
+
+  // Auto-dismiss the toast after a few seconds so it doesn't stick around forever.
   useEffect(() => {
-    if (!deleteErrorMessage) return
-    const timer = setTimeout(() => setDeleteErrorMessage(null), 5000)
+    if (!toastMessage) return
+    const timer = setTimeout(() => setToastMessage(null), 5000)
     return () => clearTimeout(timer)
-  }, [deleteErrorMessage])
+  }, [toastMessage])
+
+  // --- State for the Pending Review queue ---
+  const [pendingJobs, setPendingJobs] =
+    useState<PendingJob[]>(initialPendingJobs)
+  const [isPendingModalOpen, setIsPendingModalOpen] = useState(false)
 
   // --- Event Handlers ---
   const handleInputChange = (
@@ -321,8 +352,63 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
         restored.splice(indexToRestore, 0, jobToRestore)
         return restored
       })
-      setDeleteErrorMessage(
+      setToastMessage(
         `Failed to delete "${jobToRestore?.company ?? "job"}". It has been restored.`
+      )
+    })
+  }
+
+  // --- Pending Review Handlers ---
+  // Approving is "optimistic" on the pending side: the row disappears from
+  // the review queue the instant you click, since that's the interaction
+  // that needs to feel instant. It only gets added to the master jobs list
+  // once the server confirms the new row (we need the real DB id before it
+  // can be edited/deleted like any other job) - with our devDelay that's
+  // about a second later, which is fine for a one-at-a-time review flow.
+  const handleApprovePending = (pendingId: number) => {
+    const indexToRestore = pendingJobs.findIndex((p) => p.id === pendingId)
+    const pendingToRestore = pendingJobs[indexToRestore]
+
+    setPendingJobs((prev) => prev.filter((p) => p.id !== pendingId))
+
+    approvePendingJob(pendingId)
+      .then((newJob) => {
+        setJobs((prev) => [newJob, ...prev])
+      })
+      .catch((err) => {
+        console.error("Approve Pending Job Error:", err)
+        // Put it back in the queue, since it never actually got approved
+        setPendingJobs((prev) => {
+          if (prev.some((p) => p.id === pendingId)) return prev
+          const restored = [...prev]
+          restored.splice(indexToRestore, 0, pendingToRestore)
+          return restored
+        })
+        setToastMessage(
+          `Failed to approve "${pendingToRestore?.company ?? "job"}". Please try again.`
+        )
+      })
+  }
+
+  // Dismissing works just like deleting a job, but against the pending
+  // queue instead of the master table - remove it from view immediately,
+  // restore it (with a toast) if the background request turns out to fail.
+  const handleDismissPending = (pendingId: number) => {
+    const indexToRestore = pendingJobs.findIndex((p) => p.id === pendingId)
+    const pendingToRestore = pendingJobs[indexToRestore]
+
+    setPendingJobs((prev) => prev.filter((p) => p.id !== pendingId))
+
+    dismissPendingJob(pendingId).catch((err) => {
+      console.error("Dismiss Pending Job Error:", err)
+      setPendingJobs((prev) => {
+        if (prev.some((p) => p.id === pendingId)) return prev
+        const restored = [...prev]
+        restored.splice(indexToRestore, 0, pendingToRestore)
+        return restored
+      })
+      setToastMessage(
+        `Failed to dismiss "${pendingToRestore?.company ?? "job"}". Please try again.`
       )
     })
   }
@@ -373,6 +459,20 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
             {syncingCategory === "GTM Engineering"
               ? "Syncing..."
               : "Sync GTM Engineering"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={() => setIsPendingModalOpen(true)}
+          >
+            <Inbox className="h-3.5 w-3.5" />
+            Pending Review
+            {pendingJobs.length > 0 && (
+              <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold text-white">
+                {pendingJobs.length}
+              </span>
+            )}
           </Button>
           <Dialog
             open={isFormOpen}
@@ -652,18 +752,157 @@ export const JobsTable = ({ initialJobs }: JobsTableProps) => {
         </DialogContent>
       </Dialog>
 
-      {/* --- Delete-failed toast --- */}
-      {/* Only ever shows up if the background delete request fails after we've
-          already optimistically removed the row - see handleDeleteConfirm. */}
+      {/* --- Pending Review Modal --- */}
+      {/* Jobs the poller found but you haven't reviewed yet. Nothing here is
+          in the master table - approving inserts it there, dismissing just
+          removes it from this list. Both actions are optimistic (see the
+          handlers above), so each row disappears the instant you click. */}
+      <Dialog open={isPendingModalOpen} onOpenChange={setIsPendingModalOpen}>
+        <DialogContent className="sm:max-w-[700px] md:max-w-[900px]">
+          <DialogHeader>
+            <DialogTitle>Pending Review ({pendingJobs.length})</DialogTitle>
+            <DialogDescription>
+              Approve the jobs you want to add to your tracked list, or dismiss
+              the ones that aren&apos;t relevant.
+            </DialogDescription>
+          </DialogHeader>
+          {pendingJobs.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+              No pending jobs right now. Run a sync to check for new listings.
+            </p>
+          ) : (
+            <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700/50">
+              <table className="w-full border-collapse text-left text-sm">
+                <thead>
+                  <tr className="sticky top-0 border-b border-gray-200 bg-gray-50 dark:border-gray-700/50 dark:bg-gray-900">
+                    <th className="px-3 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                      Title
+                    </th>
+                    <th className="px-3 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                      Company
+                    </th>
+                    <th className="px-3 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                      Salary
+                    </th>
+                    <th className="px-3 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                      Location
+                    </th>
+                    <th className="px-3 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                      Category
+                    </th>
+                    <th className="px-3 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                      Link
+                    </th>
+                    <th className="px-3 py-2 text-right font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <AnimatePresence initial={false}>
+                    {pendingJobs.map((pendingJob) => (
+                      <motion.tr
+                        key={pendingJob.id}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="border-b border-gray-100 last:border-0 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-gray-700/20"
+                      >
+                        <td
+                          className="max-w-[160px] truncate px-3 py-2.5 font-medium text-gray-900 dark:text-white"
+                          title={pendingJob.title ?? undefined}
+                        >
+                          {pendingJob.title ?? (
+                            <span className="text-gray-400 dark:text-gray-600">
+                              —
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          className="max-w-[140px] truncate px-3 py-2.5 font-medium text-gray-900 dark:text-white"
+                          title={pendingJob.company}
+                        >
+                          {pendingJob.company}
+                        </td>
+                        <td
+                          className="max-w-[120px] truncate px-3 py-2.5 text-gray-600 dark:text-gray-300"
+                          title={pendingJob.salary ?? undefined}
+                        >
+                          {pendingJob.salary ?? (
+                            <span className="text-gray-400 dark:text-gray-600">
+                              —
+                            </span>
+                          )}
+                        </td>
+                        <td
+                          className="max-w-[130px] truncate px-3 py-2.5 text-gray-600 dark:text-gray-300"
+                          title={pendingJob.location ?? undefined}
+                        >
+                          {pendingJob.location ?? (
+                            <span className="text-gray-400 dark:text-gray-600">
+                              —
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 whitespace-nowrap">
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_STYLES[pendingJob.category]}`}
+                          >
+                            {pendingJob.category}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <LinkCell href={pendingJob.jobLink} label="Posting" />
+                        </td>
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-green-600 hover:text-green-700 dark:text-green-400 dark:hover:text-green-500"
+                              title="Approve - add to your tracked jobs"
+                              onClick={() =>
+                                handleApprovePending(pendingJob.id)
+                              }
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-gray-400 hover:text-red-600 dark:text-gray-500 dark:hover:text-red-400"
+                              title="Dismiss - not relevant"
+                              onClick={() =>
+                                handleDismissPending(pendingJob.id)
+                              }
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </AnimatePresence>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* --- Background-action-failed toast --- */}
+      {/* Only ever shows up if a delete/approve/dismiss request fails after
+          we've already optimistically updated the UI - see the handlers above. */}
       <AnimatePresence>
-        {deleteErrorMessage && (
+        {toastMessage && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
             className="fixed right-4 bottom-4 z-50 max-w-sm rounded-lg border border-red-200 bg-white px-4 py-3 text-sm text-red-700 shadow-lg dark:border-red-900 dark:bg-gray-800 dark:text-red-400"
           >
-            {deleteErrorMessage}
+            {toastMessage}
           </motion.div>
         )}
       </AnimatePresence>
