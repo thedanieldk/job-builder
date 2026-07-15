@@ -64,7 +64,10 @@ export async function createJob(input: JobInput) {
 /**
  * UPDATE: Updates an existing job by its ID.
  */
-export async function updateJob({ id, ...input }: JobInput & { id: number }) {
+export async function updateJob({
+  id,
+  ...input
+}: Partial<JobInput> & { id: number }) {
   try {
     await devDelay()
     console.log(`Server Action: Updating job ${id}...`)

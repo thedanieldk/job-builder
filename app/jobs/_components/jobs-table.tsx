@@ -32,6 +32,7 @@ import type { PollableCategory } from "@/lib/jsearch-api"
 import { AnimatePresence, motion } from "framer-motion"
 import {
   Check,
+  ChevronDown,
   Edit2,
   ExternalLink,
   Inbox,
@@ -312,6 +313,32 @@ export const JobsTable = ({
       setError(err instanceof Error ? err.message : "Failed to save job.")
       setIsSubmitting(false) // Important: Reset loading state on error
     }
+  }
+
+  // --- Inline status change handler ---
+  // Lets you change a job's status straight from the table (the colored pill
+  // doubles as a <select>) instead of opening the edit dialog. Optimistic
+  // like the other single-field actions above: update the pill immediately,
+  // then quietly revert + toast if the server call fails.
+  const handleStatusChange = (jobId: number, newStatus: JobStatus) => {
+    const previousJob = jobs.find((j) => j.id === jobId)
+    if (!previousJob || previousJob.status === newStatus) return
+
+    setJobs((prevJobs) =>
+      prevJobs.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j))
+    )
+
+    updateJob({ id: jobId, status: newStatus }).catch((err) => {
+      console.error("Update Job Status Error:", err)
+      setJobs((prevJobs) =>
+        prevJobs.map((j) =>
+          j.id === jobId ? { ...j, status: previousJob.status } : j
+        )
+      )
+      setToastMessage(
+        `Failed to update status for "${previousJob.company}". Please try again.`
+      )
+    })
   }
 
   // --- Deletion Handlers ---
@@ -1039,11 +1066,28 @@ export const JobsTable = ({
                         )}
                       </td>
                       <td className="px-2.5 py-2.5 whitespace-nowrap">
-                        <span
-                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[job.status]}`}
-                        >
-                          {job.status}
-                        </span>
+                        {/* Looks like the status pill, but is a real <select> -
+                            click it to change the status right from the table,
+                            no need to open the edit dialog. */}
+                        <div className="relative inline-block">
+                          <select
+                            value={job.status}
+                            onChange={(e) =>
+                              handleStatusChange(
+                                job.id,
+                                e.target.value as JobStatus
+                              )
+                            }
+                            className={`cursor-pointer appearance-none rounded-full py-0.5 pr-6 pl-2 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50 ${STATUS_STYLES[job.status]}`}
+                          >
+                            {STATUS_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute top-1/2 right-1.5 h-3 w-3 -translate-y-1/2 opacity-60" />
+                        </div>
                       </td>
                       <td className="px-2.5 py-2.5 whitespace-nowrap">
                         <span
