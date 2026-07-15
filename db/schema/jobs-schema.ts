@@ -66,6 +66,9 @@ export const jobs = pgTable(
     notes: text("notes"),
     // direct link to the job posting
     jobLink: text("job_link"),
+    // your drafted cover letter text for this job, edited in the drawer on
+    // the jobs table and exportable as a PDF
+    coverLetter: text("cover_letter"),
     // which job board/API this listing came from (e.g. "jsearch", "greenhouse")
     // lets us support multiple sources later without id collisions between them
     source: text("source"),

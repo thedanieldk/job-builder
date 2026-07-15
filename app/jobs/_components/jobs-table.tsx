@@ -25,6 +25,14 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import type { JobCategory, JobStatus } from "@/db/schema/jobs-schema"
@@ -33,8 +41,10 @@ import { AnimatePresence, motion } from "framer-motion"
 import {
   Check,
   ChevronDown,
+  Download,
   Edit2,
   ExternalLink,
+  FileText,
   Inbox,
   Plus,
   RefreshCw,
@@ -42,6 +52,9 @@ import {
   X,
 } from "lucide-react"
 import { useEffect, useState, SubmitEvent } from "react"
+// Generates the cover letter PDF entirely in the browser - no server
+// round trip needed since it's just formatted text.
+import jsPDF from "jspdf"
 
 // Shape of a single row in the table. Mirrors the "jobs" drizzle schema.
 export interface Job {
@@ -58,6 +71,7 @@ export interface Job {
   website: string | null
   notes: string | null
   jobLink: string | null
+  coverLetter: string | null
 }
 
 // Shape of a single row in the pending-review queue. Mirrors the
@@ -223,6 +237,22 @@ export const JobsTable = ({
   const [pendingJobs, setPendingJobs] =
     useState<PendingJob[]>(initialPendingJobs)
   const [isPendingModalOpen, setIsPendingModalOpen] = useState(false)
+
+  // --- State for the Cover Letter drawer ---
+  // coverLetterJobId is null when the drawer is closed; otherwise it's the
+  // id of the job whose cover letter is being edited. coverLetterDraft holds
+  // the in-progress text so typing doesn't touch the main "jobs" list until
+  // you hit Save.
+  const [coverLetterJobId, setCoverLetterJobId] = useState<number | null>(
+    null
+  )
+  const [coverLetterDraft, setCoverLetterDraft] = useState("")
+  const [isSavingCoverLetter, setIsSavingCoverLetter] = useState(false)
+  const [coverLetterError, setCoverLetterError] = useState<string | null>(
+    null
+  )
+  // The job the drawer is currently open for, if any
+  const coverLetterJob = jobs.find((j) => j.id === coverLetterJobId) ?? null
 
   // --- Event Handlers ---
   const handleInputChange = (
@@ -438,6 +468,79 @@ export const JobsTable = ({
         `Failed to dismiss "${pendingToRestore?.company ?? "job"}". Please try again.`
       )
     })
+  }
+
+  // --- Cover Letter Drawer Handlers ---
+  const handleOpenCoverLetter = (job: Job) => {
+    setCoverLetterJobId(job.id)
+    setCoverLetterDraft(job.coverLetter ?? "")
+    setCoverLetterError(null)
+  }
+
+  const handleCloseCoverLetter = () => {
+    setCoverLetterJobId(null)
+    setCoverLetterDraft("")
+    setCoverLetterError(null)
+  }
+
+  // Saving waits for the server to confirm (unlike the optimistic handlers
+  // above) since this is a bigger, deliberate edit the user commits with a
+  // button click, not a quick toggle - it's fine for Save to take a moment.
+  const handleSaveCoverLetter = async () => {
+    if (coverLetterJobId === null) return
+    setIsSavingCoverLetter(true)
+    setCoverLetterError(null)
+    try {
+      const updatedJob = await updateJob({
+        id: coverLetterJobId,
+        coverLetter: coverLetterDraft,
+      })
+      setJobs((prev) =>
+        prev.map((j) => (j.id === updatedJob.id ? updatedJob : j))
+      )
+    } catch (err) {
+      console.error("Save Cover Letter Error:", err)
+      setCoverLetterError("Failed to save. Please try again.")
+    } finally {
+      setIsSavingCoverLetter(false)
+    }
+  }
+
+  // Renders the current draft onto a standard US Letter page (8.5in x 11in)
+  // and triggers a download - entirely in the browser, since it's just text.
+  const handleDownloadCoverLetterPdf = () => {
+    if (!coverLetterJob || coverLetterDraft.trim() === "") return
+
+    const doc = new jsPDF({ unit: "pt", format: "letter" })
+    const margin = 72 // 1 inch, in points (jsPDF's "pt" unit is 72 per inch)
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const usableWidth = pageWidth - margin * 2
+    const lineHeight = 16
+
+    doc.setFont("times", "normal")
+    doc.setFontSize(12)
+
+    // Wraps long lines to fit the page width, while still respecting the
+    // paragraph breaks the user typed in the textarea
+    const lines = doc.splitTextToSize(coverLetterDraft, usableWidth)
+    let y = margin
+    for (const line of lines) {
+      // Start a new page once we'd run past the bottom margin
+      if (y > pageHeight - margin) {
+        doc.addPage()
+        y = margin
+      }
+      doc.text(line, margin, y)
+      y += lineHeight
+    }
+
+    // Turn the company name into a filesystem-safe filename
+    const safeCompany = coverLetterJob.company
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+    doc.save(`cover-letter-${safeCompany || "job"}.pdf`)
   }
 
   return (
@@ -918,6 +1021,59 @@ export const JobsTable = ({
         </DialogContent>
       </Dialog>
 
+      {/* --- Cover Letter Drawer --- */}
+      {/* Slide-in text editor for drafting a cover letter tied to one job.
+          Opens from the "Cover Letter" button in the table; re-opening it
+          loads whatever was last saved for that job. Save writes it to the
+          database, and Download PDF exports the current draft as a
+          standard US Letter PDF without needing to save first. */}
+      <Sheet
+        open={coverLetterJobId !== null}
+        onOpenChange={(open) => {
+          if (!open) handleCloseCoverLetter()
+        }}
+      >
+        <SheetContent className="flex w-full flex-col data-[side=right]:sm:max-w-3xl">
+          <SheetHeader>
+            <SheetTitle>Cover Letter</SheetTitle>
+            <SheetDescription>
+              {coverLetterJob
+                ? `Draft your cover letter for ${coverLetterJob.company}.`
+                : ""}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex flex-1 overflow-y-auto px-4">
+            <Textarea
+              value={coverLetterDraft}
+              onChange={(e) => setCoverLetterDraft(e.target.value)}
+              placeholder="Dear Hiring Manager,..."
+              disabled={isSavingCoverLetter}
+              className="flex-1 resize-none text-base leading-relaxed"
+            />
+          </div>
+          {coverLetterError && (
+            <p className="px-4 text-sm text-red-500">{coverLetterError}</p>
+          )}
+          <SheetFooter className="flex-row justify-end gap-2">
+            <Button
+              variant="outline"
+              className="gap-1.5"
+              disabled={coverLetterDraft.trim() === ""}
+              onClick={handleDownloadCoverLetterPdf}
+            >
+              <Download className="h-4 w-4" />
+              Download PDF
+            </Button>
+            <Button
+              onClick={handleSaveCoverLetter}
+              disabled={isSavingCoverLetter}
+            >
+              {isSavingCoverLetter ? "Saving..." : "Save"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
       {/* --- Background-action-failed toast --- */}
       {/* Only ever shows up if a delete/approve/dismiss request fails after
           we've already optimistically updated the UI - see the handlers above. */}
@@ -985,6 +1141,9 @@ export const JobsTable = ({
                   </th>
                   <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Job Link
+                  </th>
+                  <th className="px-2.5 py-2 font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
+                    Cover Letter
                   </th>
                   <th className="px-2.5 py-2 text-right font-semibold whitespace-nowrap text-gray-700 dark:text-gray-200">
                     Actions
@@ -1111,6 +1270,17 @@ export const JobsTable = ({
                       </td>
                       <td className="px-2.5 py-2.5">
                         <LinkCell href={job.jobLink} label="Posting" />
+                      </td>
+                      <td className="px-2.5 py-2.5">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={`h-7 w-7 ${job.coverLetter?.trim() ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-600"}`}
+                          title="Cover Letter"
+                          onClick={() => handleOpenCoverLetter(job)}
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
                       </td>
                       <td className="px-2.5 py-2.5 text-right whitespace-nowrap">
                         <div className="flex justify-end gap-1">

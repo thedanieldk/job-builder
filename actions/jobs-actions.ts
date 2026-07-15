@@ -21,6 +21,7 @@ export type JobInput = {
   website?: string | null
   notes?: string | null
   jobLink?: string | null
+  coverLetter?: string | null
   // which job board/API this listing came from (e.g. "jsearch"), and the
   // unique id that source gave it - together these identify an imported
   // listing so the poller can update it instead of creating a duplicate
