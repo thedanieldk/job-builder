@@ -8,7 +8,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 // Update metadata for the site
 export const metadata: Metadata = {
-  title: "Job Tracker",
+  title: "Job Board",
   description: "Track jobs you're applying to and their status, all in one place.",
 };
 

@@ -29,7 +29,7 @@ export const Header = () => {
           >
             <Briefcase className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             <span className="text-lg font-semibold text-gray-900 dark:text-white">
-              Job Tracker
+              Job Board
             </span>
           </motion.div>
 

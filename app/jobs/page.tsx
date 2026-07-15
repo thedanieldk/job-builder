@@ -20,7 +20,7 @@ export default async function JobsPage() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           {/* Page title */}
           <h1 className="mb-8 text-3xl font-bold text-gray-900 dark:text-white">
-            Job Tracker
+            Job Board
           </h1>
 
           {/* Use Suspense to handle the loading state */}
