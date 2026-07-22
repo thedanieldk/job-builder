@@ -48,6 +48,7 @@ import {
   Inbox,
   Plus,
   RefreshCw,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react"
@@ -71,6 +72,7 @@ export interface Job {
   website: string | null
   notes: string | null
   jobLink: string | null
+  description: string | null
   coverLetter: string | null
 }
 
@@ -247,7 +249,13 @@ export const JobsTable = ({
     null
   )
   const [coverLetterDraft, setCoverLetterDraft] = useState("")
+  // The pasted-in job posting text - optional context that helps the AI
+  // generator personalize the letter to this specific posting, not just the
+  // company/title/industry columns. Saved alongside the cover letter.
+  const [jobDescriptionDraft, setJobDescriptionDraft] = useState("")
   const [isSavingCoverLetter, setIsSavingCoverLetter] = useState(false)
+  const [isGeneratingCoverLetter, setIsGeneratingCoverLetter] =
+    useState(false)
   const [coverLetterError, setCoverLetterError] = useState<string | null>(
     null
   )
@@ -474,13 +482,58 @@ export const JobsTable = ({
   const handleOpenCoverLetter = (job: Job) => {
     setCoverLetterJobId(job.id)
     setCoverLetterDraft(job.coverLetter ?? "")
+    setJobDescriptionDraft(job.description ?? "")
     setCoverLetterError(null)
   }
 
   const handleCloseCoverLetter = () => {
     setCoverLetterJobId(null)
     setCoverLetterDraft("")
+    setJobDescriptionDraft("")
     setCoverLetterError(null)
+  }
+
+  // Streams a fresh draft from Claude into the textarea, replacing whatever
+  // was there. Doesn't auto-save - same as typing it by hand, you still
+  // review and hit Save yourself.
+  const handleGenerateCoverLetter = async () => {
+    if (coverLetterJobId === null) return
+    setIsGeneratingCoverLetter(true)
+    setCoverLetterError(null)
+    setCoverLetterDraft("")
+
+    try {
+      const response = await fetch("/api/cover-letter/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobId: coverLetterJobId,
+          // Send whatever's currently in the textarea, even if it hasn't
+          // been saved yet - no need to hit Save before generating.
+          description:
+            jobDescriptionDraft.trim() === "" ? null : jobDescriptionDraft,
+        }),
+      })
+
+      if (!response.ok || !response.body) {
+        throw new Error("Generation request failed.")
+      }
+
+      // Read the streamed response chunk by chunk, appending each piece of
+      // text as it arrives so the letter appears to type itself in.
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        setCoverLetterDraft((prev) => prev + decoder.decode(value))
+      }
+    } catch (err) {
+      console.error("Generate Cover Letter Error:", err)
+      setCoverLetterError("Failed to generate. Please try again.")
+    } finally {
+      setIsGeneratingCoverLetter(false)
+    }
   }
 
   // Saving waits for the server to confirm (unlike the optimistic handlers
@@ -494,6 +547,8 @@ export const JobsTable = ({
       const updatedJob = await updateJob({
         id: coverLetterJobId,
         coverLetter: coverLetterDraft,
+        description:
+          jobDescriptionDraft.trim() === "" ? null : jobDescriptionDraft,
       })
       setJobs((prev) =>
         prev.map((j) => (j.id === updatedJob.id ? updatedJob : j))
@@ -1042,12 +1097,32 @@ export const JobsTable = ({
                 : ""}
             </SheetDescription>
           </SheetHeader>
+          <div className="space-y-1.5 px-4">
+            <label
+              htmlFor="job-description-input"
+              className="text-sm font-medium text-gray-700 dark:text-gray-300"
+            >
+              Job Description{" "}
+              <span className="font-normal text-gray-400">
+                (optional - paste in the posting so Generate with AI can
+                personalize to it)
+              </span>
+            </label>
+            <Textarea
+              id="job-description-input"
+              value={jobDescriptionDraft}
+              onChange={(e) => setJobDescriptionDraft(e.target.value)}
+              placeholder="Paste the job posting here..."
+              disabled={isSavingCoverLetter || isGeneratingCoverLetter}
+              className="h-28 resize-none text-sm"
+            />
+          </div>
           <div className="flex flex-1 overflow-y-auto px-4">
             <Textarea
               value={coverLetterDraft}
               onChange={(e) => setCoverLetterDraft(e.target.value)}
               placeholder="Dear Hiring Manager,..."
-              disabled={isSavingCoverLetter}
+              disabled={isSavingCoverLetter || isGeneratingCoverLetter}
               className="flex-1 resize-none text-base leading-relaxed"
             />
           </div>
@@ -1055,6 +1130,15 @@ export const JobsTable = ({
             <p className="px-4 text-sm text-red-500">{coverLetterError}</p>
           )}
           <SheetFooter className="flex-row justify-end gap-2">
+            <Button
+              variant="outline"
+              className="mr-auto gap-1.5"
+              disabled={isGeneratingCoverLetter || isSavingCoverLetter}
+              onClick={handleGenerateCoverLetter}
+            >
+              <Sparkles className="h-4 w-4" />
+              {isGeneratingCoverLetter ? "Generating..." : "Generate with AI"}
+            </Button>
             <Button
               variant="outline"
               className="gap-1.5"
@@ -1066,7 +1150,7 @@ export const JobsTable = ({
             </Button>
             <Button
               onClick={handleSaveCoverLetter}
-              disabled={isSavingCoverLetter}
+              disabled={isSavingCoverLetter || isGeneratingCoverLetter}
             >
               {isSavingCoverLetter ? "Saving..." : "Save"}
             </Button>

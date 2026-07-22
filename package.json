@@ -12,9 +12,11 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "npx bun db/seed/index.ts"
+    "db:seed": "npx bun db/seed/index.ts",
+    "db:seed-snippets": "npx bun db/seed/cover-letter-snippets.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.113.0",
     "@base-ui/react": "^1.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

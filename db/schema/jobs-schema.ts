@@ -66,6 +66,10 @@ export const jobs = pgTable(
     notes: text("notes"),
     // direct link to the job posting
     jobLink: text("job_link"),
+    // the job posting's full text (pasted in on the Cover Letter drawer) -
+    // used as context so the AI generator can write a letter that speaks to
+    // this specific posting, not just the title/company/industry columns
+    description: text("description"),
     // your drafted cover letter text for this job, edited in the drawer on
     // the jobs table and exportable as a PDF
     coverLetter: text("cover_letter"),
